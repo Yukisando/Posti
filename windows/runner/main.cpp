@@ -13,6 +13,22 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
     CreateAndAttachConsole();
   }
 
+  // Single-instance: if another Posti instance is running, activate its window
+  // and exit immediately. We use a named mutex to detect an existing instance
+  // and FindWindow to bring the existing window to the foreground.
+  HANDLE single_instance_mutex = CreateMutexW(nullptr, TRUE, L"Local\\PostiSingletonMutex");
+  if (single_instance_mutex) {
+    if (GetLastError() == ERROR_ALREADY_EXISTS) {
+      HWND other = FindWindowW(L"FLUTTER_RUNNER_WIN32_WINDOW", nullptr);
+      if (other) {
+        if (!IsWindowVisible(other)) ShowWindow(other, SW_SHOW);
+        SetForegroundWindow(other);
+      }
+      CloseHandle(single_instance_mutex);
+      return EXIT_SUCCESS;
+    }
+  }
+
   // Initialize COM, so that it is available for use in the library and/or
   // plugins.
   ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
@@ -33,9 +49,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   // Do not quit the process when the window is closed; we hide to tray instead.
   window.SetQuitOnClose(false);
 
-  // Register a global hotkey: Win + Shift + P -> toggles Posti
-  // id=1, modifiers=MOD_WIN | MOD_SHIFT, vk='P'
-  RegisterHotKey(window.GetHandle(), 1, MOD_WIN | MOD_SHIFT, 0x50 /* 'P' */);
+  // Global hotkey logic removed — user requested external shortcut handling.
 
   // Register the app to start with Windows by default (HKCU Run)
   // Write the current executable path into HKCU\Software\Microsoft\Windows\CurrentVersion\Run
@@ -53,6 +67,12 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   while (::GetMessage(&msg, nullptr, 0, 0)) {
     ::TranslateMessage(&msg);
     ::DispatchMessage(&msg);
+  }
+
+  // Clean up the single-instance mutex before exit.
+  if (single_instance_mutex) {
+    ReleaseMutex(single_instance_mutex);
+    CloseHandle(single_instance_mutex);
   }
 
   ::CoUninitialize();

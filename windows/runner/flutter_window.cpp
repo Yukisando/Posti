@@ -20,8 +20,25 @@ static void AddTrayIcon(HWND hwnd) {
   g_nid.uID = 1;
   g_nid.uCallbackMessage = WM_TRAYICON;
   g_nid.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
-  // Use a Windows system icon instead of custom .ico
-  g_nid.hIcon = LoadIcon(nullptr, IDI_APPLICATION);
+  // Try to load the app icon from Flutter assets (`assets/icon.ico`) at runtime.
+  // Fallback to the compiled resource IDI_APP_ICON and then to a system icon.
+  HICON hIcon = nullptr;
+  {
+    wchar_t exe_path[MAX_PATH];
+    GetModuleFileNameW(nullptr, exe_path, MAX_PATH);
+    std::wstring dir(exe_path);
+    const auto pos = dir.find_last_of(L"\\/");
+    if (pos != std::wstring::npos) dir = dir.substr(0, pos);
+    std::wstring asset_path = dir + L"\\data\\flutter_assets\\assets\\icon.ico";
+    hIcon = reinterpret_cast<HICON>(LoadImageW(nullptr, asset_path.c_str(), IMAGE_ICON, 0, 0, LR_LOADFROMFILE | LR_DEFAULTSIZE));
+  }
+  if (!hIcon) {
+    hIcon = LoadIcon(GetModuleHandle(nullptr), MAKEINTRESOURCE(IDI_APP_ICON));
+  }
+  if (!hIcon) {
+    hIcon = LoadIcon(nullptr, IDI_APPLICATION);
+  }
+  g_nid.hIcon = hIcon;
   wcscpy_s(g_nid.szTip, L"Posti");
   Shell_NotifyIconW(NIM_ADD, &g_nid);
 }
@@ -95,14 +112,9 @@ void FlutterWindow::OnDestroy() {
     flutter_controller_ = nullptr;
   }
 
-  // Unregister the global hotkey if it was registered.
-  if (GetHandle()) {
-    UnregisterHotKey(GetHandle(), 1);
-  }
-
   RemoveTrayIcon();
   Win32Window::OnDestroy();
-}
+} 
 
 LRESULT
 FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
@@ -123,18 +135,6 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
       flutter_controller_->engine()->ReloadSystemFonts();
       break;
 
-    case WM_HOTKEY: {
-      // id 1 toggles the Posti window (registered in main.cpp)
-      if (wparam == 1) {
-        if (IsWindowVisible(hwnd)) {
-          ShowWindow(hwnd, SW_HIDE);
-        } else {
-          ShowWindow(hwnd, SW_SHOW);
-          SetForegroundWindow(hwnd);
-        }
-      }
-      break;
-    }
 
     case WM_TRAYICON: {
       switch (lparam) {

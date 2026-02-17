@@ -95,8 +95,21 @@ const wchar_t* WindowClassRegistrar::GetWindowClass() {
     window_class.cbClsExtra = 0;
     window_class.cbWndExtra = 0;
     window_class.hInstance = GetModuleHandle(nullptr);
-    window_class.hIcon =
-        LoadIcon(window_class.hInstance, MAKEINTRESOURCE(IDI_APP_ICON));
+    // Prefer runtime-loaded icon from Flutter assets (`assets/icon.ico`); fallback to resource.
+    HICON app_icon = nullptr;
+    {
+      wchar_t exe_path[MAX_PATH];
+      GetModuleFileNameW(nullptr, exe_path, MAX_PATH);
+      std::wstring dir(exe_path);
+      const auto pos = dir.find_last_of(L"\\/");
+      if (pos != std::wstring::npos) dir = dir.substr(0, pos);
+      std::wstring asset_path = dir + L"\\data\\flutter_assets\\assets\\icon.ico";
+      app_icon = reinterpret_cast<HICON>(LoadImageW(nullptr, asset_path.c_str(), IMAGE_ICON, 0, 0, LR_LOADFROMFILE | LR_DEFAULTSIZE));
+    }
+    if (!app_icon) {
+      app_icon = LoadIcon(window_class.hInstance, MAKEINTRESOURCE(IDI_APP_ICON));
+    }
+    window_class.hIcon = app_icon ? app_icon : LoadIcon(nullptr, IDI_APPLICATION);
     window_class.hbrBackground = 0;
     window_class.lpszMenuName = nullptr;
     window_class.lpfnWndProc = Win32Window::WndProc;
@@ -144,6 +157,23 @@ bool Win32Window::Create(const std::wstring& title,
 
   if (!window) {
     return false;
+  }
+
+  // Ensure the window instance uses the bundled Flutter asset icon (both large and small),
+  // so the titlebar/document icon matches the tray icon.
+  {
+    HICON hIcon = nullptr;
+    wchar_t exe_path[MAX_PATH];
+    GetModuleFileName(nullptr, exe_path, MAX_PATH);
+    std::wstring dir(exe_path);
+    const auto pos = dir.find_last_of(L"\\/");
+    if (pos != std::wstring::npos) dir = dir.substr(0, pos);
+    std::wstring asset_path = dir + L"\\data\\flutter_assets\\assets\\icon.ico";
+    hIcon = reinterpret_cast<HICON>(LoadImageW(nullptr, asset_path.c_str(), IMAGE_ICON, GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON), LR_LOADFROMFILE));
+    if (hIcon) {
+      SendMessage(window, WM_SETICON, ICON_BIG, (LPARAM)hIcon);
+      SendMessage(window, WM_SETICON, ICON_SMALL, (LPARAM)hIcon);
+    }
   }
 
   // Ensure theme and then run subclass OnCreate
