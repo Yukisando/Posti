@@ -4,6 +4,9 @@ on:
   push:
     branches: [ main ]
 
+permissions:
+  contents: write
+
 jobs:
   build-windows:
     name: Build Windows (x64)
@@ -53,7 +56,15 @@ jobs:
       - name: Package macOS build
         run: |
           mkdir -p release
-          ditto -c -k --sequesterRsrc --keepParent build/macos/Build/Products/Release/posti.app release/posti-macos.zip
+          APP_NAME="Posti"
+          # The app bundle name may use the capitalized project name
+          if [ -d "build/macos/Build/Products/Release/${APP_NAME}.app" ]; then
+            ditto -c -k --sequesterRsrc --keepParent "build/macos/Build/Products/Release/${APP_NAME}.app" release/posti-macos.zip
+          elif [ -d "build/macos/Build/Products/Release/posti.app" ]; then
+            ditto -c -k --sequesterRsrc --keepParent "build/macos/Build/Products/Release/posti.app" release/posti-macos.zip
+          else
+            echo "Could not find .app bundle" && ls -la build/macos/Build/Products/Release/ && exit 1
+          fi
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
@@ -68,6 +79,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Generate tag
+        id: tag
+        run: echo "tag=v1.0.0-$(date +'%Y%m%d')-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
       - name: Download Windows artifact
         uses: actions/download-artifact@v4
         with:
@@ -79,33 +94,13 @@ jobs:
           name: posti-macos
 
       - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.sha }}
-          release_name: Release ${{ github.sha }}
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: Release ${{ steps.tag.outputs.tag }}
           body: "Automated release for commit ${{ github.sha }}"
           draft: false
           prerelease: false
-
-      - name: Upload Windows asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./posti-windows-x64.zip
-          asset_name: posti-windows-x64.zip
-          asset_content_type: application/zip
-
-      - name: Upload macOS asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./posti-macos.zip
-          asset_name: posti-macos.zip
-          asset_content_type: application/zip
+          files: |
+            posti-windows-x64.zip
+            posti-macos.zip

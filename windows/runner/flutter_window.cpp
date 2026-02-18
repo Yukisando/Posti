@@ -120,22 +120,9 @@ LRESULT
 FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
                               WPARAM const wparam,
                               LPARAM const lparam) noexcept {
-  // Give Flutter, including plugins, an opportunity to handle window messages.
-  if (flutter_controller_) {
-    std::optional<LRESULT> result =
-        flutter_controller_->HandleTopLevelWindowProc(hwnd, message, wparam,
-                                                      lparam);
-    if (result) {
-      return *result;
-    }
-  }
-
+  // Handle tray icon and command messages BEFORE passing to Flutter plugins,
+  // so that no plugin can intercept and consume them.
   switch (message) {
-    case WM_FONTCHANGE:
-      flutter_controller_->engine()->ReloadSystemFonts();
-      break;
-
-
     case WM_TRAYICON: {
       switch (lparam) {
         case WM_LBUTTONUP: {
@@ -146,7 +133,7 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
             ShowWindow(hwnd, SW_SHOW);
             SetForegroundWindow(hwnd);
           }
-          break;
+          return 0;
         }
         case WM_RBUTTONUP: {
           // show context menu
@@ -172,26 +159,43 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
           AppendMenuW(hMenu, MF_STRING, 1003, L"Quit");
           SetForegroundWindow(hwnd); // required before TrackPopupMenu
           TrackPopupMenu(hMenu, TPM_RIGHTBUTTON, pt.x, pt.y, 0, hwnd, nullptr);
+          // Post a benign message so the menu dismisses reliably (Win32 best practice)
+          PostMessage(hwnd, WM_NULL, 0, 0);
           DestroyMenu(hMenu);
-          break;
+          return 0;
         }
       }
-      break;
+      return 0;
     }
 
     case WM_COMMAND: {
       const int wmId = LOWORD(wparam);
       switch (wmId) {
-
         case 1002: // Toggle autostart
           ToggleAutoStart(hwnd);
-          break;
+          return 0;
         case 1003: // Quit
           PostQuitMessage(0);
-          break;
+          return 0;
       }
       break;
     }
+  }
+
+  // Give Flutter, including plugins, an opportunity to handle window messages.
+  if (flutter_controller_) {
+    std::optional<LRESULT> result =
+        flutter_controller_->HandleTopLevelWindowProc(hwnd, message, wparam,
+                                                      lparam);
+    if (result) {
+      return *result;
+    }
+  }
+
+  switch (message) {
+    case WM_FONTCHANGE:
+      flutter_controller_->engine()->ReloadSystemFonts();
+      break;
   }
 
   return Win32Window::MessageHandler(hwnd, message, wparam, lparam);

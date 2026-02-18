@@ -57,10 +57,20 @@ class _PostiAppState extends State<PostiApp> with WindowListener {
 
 
   String get _storagePath {
-    final appdata = Platform.environment['APPDATA'] ?? Directory.current.path;
-    final dir = Directory('$appdata\\Posti');
+    String base;
+    if (Platform.isWindows) {
+      base = Platform.environment['APPDATA'] ?? Directory.current.path;
+    } else if (Platform.isMacOS) {
+      final home = Platform.environment['HOME'] ?? Directory.current.path;
+      base = '$home/Library/Application Support';
+    } else {
+      // Linux / other
+      final home = Platform.environment['HOME'] ?? Directory.current.path;
+      base = '$home/.local/share';
+    }
+    final dir = Directory('$base${Platform.pathSeparator}Posti');
     if (!dir.existsSync()) dir.createSync(recursive: true);
-    return '${dir.path}\\todos.json';
+    return '${dir.path}${Platform.pathSeparator}todos.json';
   }
 
   @override
