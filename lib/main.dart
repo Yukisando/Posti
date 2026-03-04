@@ -85,9 +85,11 @@ class _PostiAppState extends State<PostiApp> with WindowListener {
   }
 
   Future<void> _setupWindow() async {
-    // Make the window floating and hidden from taskbar (native runner is frameless).
+    // Make the window hidden from taskbar (native runner is frameless).
+    // Explicitly NOT always-on-top — the native side pushes the window to
+    // HWND_BOTTOM so it sits just above the desktop, like a widget.
     try {
-      await windowManager.setAlwaysOnTop(true);
+      await windowManager.setAlwaysOnTop(false);
       await windowManager.setSkipTaskbar(true);
       await windowManager.setResizable(false);
     } catch (_) {}

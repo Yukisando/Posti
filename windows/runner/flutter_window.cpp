@@ -130,8 +130,15 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
           if (IsWindowVisible(hwnd)) {
             ShowWindow(hwnd, SW_HIDE);
           } else {
+            // Clear click-through styles before showing
+            LONG_PTR exStyle = GetWindowLongPtr(hwnd, GWL_EXSTYLE);
+            exStyle &= ~(WS_EX_TRANSPARENT | WS_EX_LAYERED | WS_EX_TOPMOST);
+            SetWindowLongPtr(hwnd, GWL_EXSTYLE, exStyle);
+
             ShowWindow(hwnd, SW_SHOW);
-            SetForegroundWindow(hwnd);
+            // Push to bottom of z-order (desktop level)
+            SetWindowPos(hwnd, HWND_BOTTOM, 0, 0, 0, 0,
+                         SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
           }
           return 0;
         }

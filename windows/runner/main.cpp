@@ -22,7 +22,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
       HWND other = FindWindowW(L"FLUTTER_RUNNER_WIN32_WINDOW", nullptr);
       if (other) {
         if (!IsWindowVisible(other)) ShowWindow(other, SW_SHOW);
-        SetForegroundWindow(other);
+        // Keep at bottom z-order (desktop level), don't bring to front
+        SetWindowPos(other, HWND_BOTTOM, 0, 0, 0, 0,
+                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
       }
       CloseHandle(single_instance_mutex);
       return EXIT_SUCCESS;

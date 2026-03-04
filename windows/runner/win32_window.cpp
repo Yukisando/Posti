@@ -147,9 +147,11 @@ bool Win32Window::Create(const std::wstring& title,
   UINT dpi = FlutterDesktopGetDpiForMonitor(monitor);
   double scale_factor = dpi / 96.0;
 
-  // Create a frameless, topmost tool window so the native title bar is hidden
+  // Create a frameless tool window so the native title bar is hidden.
+  // No WS_EX_TOPMOST — we want the window at the bottom of the z-order
+  // (desktop level), only accessible when all other windows are out of the way.
   HWND window = CreateWindowEx(
-      WS_EX_TOOLWINDOW | WS_EX_TOPMOST,  // hide from taskbar & keep on top
+      WS_EX_TOOLWINDOW,  // hide from taskbar; no topmost
       window_class, title.c_str(), WS_POPUP,
       Scale(origin.x, scale_factor), Scale(origin.y, scale_factor),
       Scale(size.width, scale_factor), Scale(size.height, scale_factor),
@@ -183,7 +185,21 @@ bool Win32Window::Create(const std::wstring& title,
 }
 
 bool Win32Window::Show() {
-  return ShowWindow(window_handle_, SW_SHOWNORMAL);
+  // Remove click-through styles that were added when the window was hidden.
+  LONG_PTR exStyle = GetWindowLongPtr(window_handle_, GWL_EXSTYLE);
+  exStyle &= ~(WS_EX_TRANSPARENT | WS_EX_LAYERED);
+  // Also ensure WS_EX_TOPMOST is never set.
+  exStyle &= ~WS_EX_TOPMOST;
+  SetWindowLongPtr(window_handle_, GWL_EXSTYLE, exStyle);
+
+  BOOL ret = ShowWindow(window_handle_, SW_SHOWNORMAL);
+
+  // Push the window to the very bottom of the z-order so it sits just
+  // above the desktop, behind every other application.
+  SetWindowPos(window_handle_, HWND_BOTTOM, 0, 0, 0, 0,
+               SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+
+  return ret;
 }
 
 // static
@@ -245,6 +261,18 @@ Win32Window::MessageHandler(HWND hwnd,
         SetFocus(child_content_);
       }
       return 0;
+
+    case WM_SHOWWINDOW: {
+      if (!wparam) {
+        // Window is being hidden — make it click-through so nothing
+        // intercepts mouse events in the area where the window *would* be.
+        LONG_PTR exStyle = GetWindowLongPtr(hwnd, GWL_EXSTYLE);
+        exStyle |= WS_EX_TRANSPARENT | WS_EX_LAYERED;
+        SetWindowLongPtr(hwnd, GWL_EXSTYLE, exStyle);
+      }
+      // When showing, Show() already clears these styles before ShowWindow.
+      return 0;
+    }
 
     case WM_DWMCOLORIZATIONCOLORCHANGED:
       UpdateTheme(hwnd);
